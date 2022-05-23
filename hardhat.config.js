@@ -47,6 +47,6 @@ module.exports = {
     deployer: 0,
   },
   paths: {
-    deployments: 'src/deployments',
+    deployments: 'deployments',
   },
 };

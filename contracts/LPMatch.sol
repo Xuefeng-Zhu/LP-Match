@@ -30,24 +30,20 @@ contract LPMatch is AccessControl {
     mapping(address => uint256) public userLP;
 
     modifier onlyAdmin() {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender));
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "not admin");
         _;
     }
 
     modifier onlyWhitelist() {
-        require(hasRole(WHITELISTED_ROLE, msg.sender));
+        require(hasRole(WHITELISTED_ROLE, msg.sender), "not whitelist");
         _;
     }
 
-    constructor(
-        IUniswapV2Router02 _router,
-        address _WETH,
-        address _token
-    ) public {
+    constructor(IUniswapV2Router02 _router, address _token) public {
         require(address(_router) != address(0));
-        require(_WETH != address(0));
         require(_token != address(0));
 
+        address _WETH = _router.WETH();
         router = _router;
         WETH = _WETH;
         token = _token;
@@ -59,18 +55,23 @@ contract LPMatch is AccessControl {
         );
         pair = _pair;
 
-        priceCumulativeLast = IUniswapV2Pair(_pair).price0CumulativeLast();
+        priceCumulativeLast = IUniswapV2Pair(_pair).price1CumulativeLast();
         uint112 reserve0;
         uint112 reserve1;
         (reserve0, reserve1, blockTimestampLast) = IUniswapV2Pair(_pair)
             .getReserves();
         require(reserve0 != 0 && reserve1 != 0, "NO_RESERVES");
+
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(WHITELISTED_ROLE, msg.sender);
+        IERC20(_WETH).approve(address(_router), uint256(-1));
+        IERC20(_token).approve(address(_router), uint256(-1));
     }
 
-    function refreshPrice() external {
+    function refreshPrice() public {
         (
-            uint256 priceCumulative,
             ,
+            uint256 priceCumulative,
             uint32 blockTimestamp
         ) = UniswapV2OracleLibrary.currentCumulativePrices(pair);
         uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
@@ -90,20 +91,17 @@ contract LPMatch is AccessControl {
         blockTimestampLast = blockTimestamp;
     }
 
-    function addLiquidity(uint256 amount, uint256 deadline)
-        external
-        onlyWhitelist
-    {
+    function addLiquidity(uint256 amount) external onlyWhitelist {
         require(
             IERC20(WETH).transferFrom(msg.sender, address(this), amount),
             "transfer failed"
         );
-        _addLiquidity(amount, deadline);
+        _addLiquidity(amount);
     }
 
-    function addLiquidityETH(uint256 deadline) external payable onlyWhitelist {
+    function addLiquidityETH() external payable onlyWhitelist {
         IWETH(WETH).deposit{value: msg.value}();
-        _addLiquidity(msg.value, deadline);
+        _addLiquidity(msg.value);
     }
 
     function withdrawLP(uint256 amount) external {
@@ -112,16 +110,20 @@ contract LPMatch is AccessControl {
         require(IERC20(pair).transfer(msg.sender, amount));
     }
 
-    function adminWithdraw(address token, uint256 amount) external onlyAdmin {
-        if (token == pair) {
+    function adminWithdraw(address tokenToWithdraw, uint256 amount)
+        external
+        onlyAdmin
+    {
+        if (tokenToWithdraw == pair) {
             require(protocolLP >= amount, "not enough balance");
             protocolLP = protocolLP.sub(amount);
         }
 
-        require(IERC20(token).transfer(msg.sender, amount));
+        require(IERC20(tokenToWithdraw).transfer(msg.sender, amount));
     }
 
-    function _addLiquidity(uint256 amount, uint256 deadline) internal {
+    function _addLiquidity(uint256 amount) internal {
+        refreshPrice();
         uint256 tokenAmount = priceAverage.mul(amount).decode144();
         (, , uint256 liquidity) = router.addLiquidity(
             token,
@@ -131,11 +133,17 @@ contract LPMatch is AccessControl {
             0,
             0,
             address(this),
-            deadline
+            now
         );
 
         uint256 halfLP = liquidity / 2;
         protocolLP = protocolLP.add(halfLP);
         userLP[msg.sender] = userLP[msg.sender].add(halfLP);
+        require(
+            IERC20(WETH).transfer(
+                msg.sender,
+                IERC20(WETH).balanceOf(address(this))
+            )
+        );
     }
 }
