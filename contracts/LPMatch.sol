@@ -10,6 +10,16 @@ import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2OracleLibrary.sol";
 import "@uniswap/lib/contracts/libraries/FixedPoint.sol";
 
+interface IRewards {
+    function deposit(uint256 amount) external;
+
+    function withdraw(uint256 amount) external;
+
+    function claim() external;
+
+    function reward() external returns (IERC20);
+}
+
 contract LPMatch is AccessControl {
     using SafeMath for uint256;
     using FixedPoint for *;
@@ -21,13 +31,17 @@ contract LPMatch is AccessControl {
     address public immutable WETH;
     address public immutable token;
     IUniswapV2Router02 public immutable router;
+    IRewards public immutable rewards;
 
+    bool public enableWhitelist;
+    uint256 public accRewardsPerLP;
     uint256 public priceCumulativeLast;
     uint32 public blockTimestampLast;
     uint256 public protocolLP;
     FixedPoint.uq112x112 public priceAverage;
 
     mapping(address => uint256) public userLP;
+    mapping(address => uint256) public userClaimed;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender));
@@ -35,20 +49,25 @@ contract LPMatch is AccessControl {
     }
 
     modifier onlyWhitelist() {
-        require(hasRole(WHITELISTED_ROLE, msg.sender));
+        if (enableWhitelist) {
+            require(hasRole(WHITELISTED_ROLE, msg.sender));
+        }
         _;
     }
 
     constructor(
         IUniswapV2Router02 _router,
+        IRewards _rewards,
         address _WETH,
         address _token
     ) public {
         require(address(_router) != address(0));
+        require(address(_rewards) != address(0));
         require(_WETH != address(0));
         require(_token != address(0));
 
         router = _router;
+        rewards = _rewards;
         WETH = _WETH;
         token = _token;
 
@@ -108,17 +127,28 @@ contract LPMatch is AccessControl {
 
     function withdrawLP(uint256 amount) external {
         require(userLP[msg.sender] >= amount, "not enough balance");
+
+        _claim(msg.sender);
+        rewards.withdraw(amount);
         userLP[msg.sender] = userLP[msg.sender].sub(amount);
         require(IERC20(pair).transfer(msg.sender, amount));
     }
 
-    function adminWithdraw(address token, uint256 amount) external onlyAdmin {
-        if (token == pair) {
+    function claim() external {
+        _claim(msg.sender);
+    }
+
+    function adminWithdraw(address _token, uint256 amount) external onlyAdmin {
+        if (_token == pair) {
             require(protocolLP >= amount, "not enough balance");
             protocolLP = protocolLP.sub(amount);
         }
 
-        require(IERC20(token).transfer(msg.sender, amount));
+        require(IERC20(_token).transfer(msg.sender, amount));
+    }
+
+    function setEnableWhitelist(bool _enableWhitelist) external onlyAdmin {
+        enableWhitelist = _enableWhitelist;
     }
 
     function _addLiquidity(uint256 amount, uint256 deadline) internal {
@@ -134,8 +164,26 @@ contract LPMatch is AccessControl {
             deadline
         );
 
+        _claim(msg.sender);
+        rewards.deposit(liquidity);
         uint256 halfLP = liquidity / 2;
         protocolLP = protocolLP.add(halfLP);
         userLP[msg.sender] = userLP[msg.sender].add(halfLP);
+    }
+
+    function _claim(address user) internal {
+        IERC20 rewardToken = rewards.reward();
+        uint256 rewardBalance = rewardToken.balanceOf(address(this));
+
+        rewards.claim();
+
+        accRewardsPerLP = accRewardsPerLP.add(
+            (rewardToken.balanceOf(address(this)).sub(rewardBalance) * 1e18) /
+                protocolLP
+        );
+
+        uint256 pastUserClaimed = userClaimed[user];
+        userClaimed[user] = (userLP[user] * accRewardsPerLP) / 1e18;
+        rewardToken.transfer(user, userClaimed[user].sub(pastUserClaimed));
     }
 }
