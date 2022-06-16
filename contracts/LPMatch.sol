@@ -58,12 +58,10 @@ contract LPMatch is AccessControl {
     constructor(
         IUniswapV2Router02 _router,
         IRewards _rewards,
-        address _WETH,
         address _token
     ) public {
         require(address(_router) != address(0));
         require(address(_rewards) != address(0));
-        require(_WETH != address(0));
         require(_token != address(0));
 
         address _WETH = _router.WETH();
