@@ -4,6 +4,7 @@ pragma solidity 0.6.6;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/cryptography/ECDSA.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
@@ -23,6 +24,7 @@ interface IRewards {
 contract LPMatch is AccessControl {
     using SafeMath for uint256;
     using FixedPoint for *;
+    using ECDSA for bytes32;
 
     bytes32 public constant WHITELISTED_ROLE = keccak256("WHITELISTED_ROLE");
     uint256 public constant PERIOD = 1 minutes;
@@ -35,10 +37,8 @@ contract LPMatch is AccessControl {
 
     bool public enableWhitelist;
     uint256 public accRewardsPerLP;
-    uint256 public priceCumulativeLast;
-    uint32 public blockTimestampLast;
     uint256 public protocolLP;
-    FixedPoint.uq112x112 public priceAverage;
+    address public priceServer;
 
     mapping(address => uint256) public userLP;
     mapping(address => uint256) public userClaimed;
@@ -77,53 +77,37 @@ contract LPMatch is AccessControl {
         );
         pair = _pair;
 
-        priceCumulativeLast = IUniswapV2Pair(_pair).price1CumulativeLast();
         uint112 reserve0;
         uint112 reserve1;
-        (reserve0, reserve1, blockTimestampLast) = IUniswapV2Pair(_pair)
-            .getReserves();
+        (reserve0, reserve1, ) = IUniswapV2Pair(_pair).getReserves();
         require(reserve0 != 0 && reserve1 != 0, "NO_RESERVES");
 
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(WHITELISTED_ROLE, msg.sender);
         IERC20(_WETH).approve(address(_router), uint256(-1));
         IERC20(_token).approve(address(_router), uint256(-1));
+        IERC20(_pair).approve(address(_rewards), uint256(-1));
     }
 
-    function refreshPrice() public {
-        (
-            ,
-            uint256 priceCumulative,
-            uint32 blockTimestamp
-        ) = UniswapV2OracleLibrary.currentCumulativePrices(pair);
-        uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
-
-        // ensure that at least one full period has passed since the last update
-        if (timeElapsed < PERIOD) {
-            return;
-        }
-
-        // overflow is desired, casting never truncates
-        // cumulative price is in (uq112x112 price * seconds) units so we simply wrap it after division by time elapsed
-        priceAverage = FixedPoint.uq112x112(
-            uint224((priceCumulative - priceCumulativeLast) / timeElapsed)
-        );
-
-        priceCumulativeLast = priceCumulative;
-        blockTimestampLast = blockTimestamp;
-    }
-
-    function addLiquidity(uint256 amount) external onlyWhitelist {
+    function addLiquidity(
+        uint256 amount,
+        uint256 price,
+        bytes calldata sig
+    ) external onlyWhitelist {
         require(
             IERC20(WETH).transferFrom(msg.sender, address(this), amount),
             "transfer failed"
         );
-        _addLiquidity(amount);
+        _addLiquidity(amount, price, sig);
     }
 
-    function addLiquidityETH() external payable onlyWhitelist {
+    function addLiquidityETH(uint256 price, bytes calldata sig)
+        external
+        payable
+        onlyWhitelist
+    {
         IWETH(WETH).deposit{value: msg.value}();
-        _addLiquidity(msg.value);
+        _addLiquidity(msg.value, price, sig);
     }
 
     function withdrawLP(uint256 amount) external {
@@ -151,13 +135,28 @@ contract LPMatch is AccessControl {
         enableWhitelist = _enableWhitelist;
     }
 
+    function setPriceServer(address _priceServer) external onlyAdmin {
+        priceServer = _priceServer;
+    }
+
+    function claimable(address user) external view returns (uint256) {
+        return (userLP[user] * accRewardsPerLP) / 1e18 - userClaimed[user];
+    }
+
     function claim() external {
         _claim(msg.sender);
     }
 
-    function _addLiquidity(uint256 amount) internal {
-        refreshPrice();
-        uint256 tokenAmount = priceAverage.mul(amount).decode144();
+    function _addLiquidity(
+        uint256 amount,
+        uint256 price,
+        bytes memory sig
+    ) internal {
+        bytes32 priceHash = keccak256(abi.encode(price))
+            .toEthSignedMessageHash();
+        require(priceHash.recover(sig) == priceServer, "Invalid price");
+
+        uint256 tokenAmount = price.mul(amount);
         (, , uint256 liquidity) = router.addLiquidity(
             token,
             WETH,
@@ -183,7 +182,11 @@ contract LPMatch is AccessControl {
     }
 
     function _claim(address user) internal {
-        IERC20 rewardToken = rewards.reward();
+        if (protocolLP == 0) {
+            return;
+        }
+
+        IERC20 rewardToken = IERC20(token);
         uint256 rewardBalance = rewardToken.balanceOf(address(this));
 
         rewards.claim();
@@ -195,6 +198,10 @@ contract LPMatch is AccessControl {
 
         uint256 pastUserClaimed = userClaimed[user];
         userClaimed[user] = (userLP[user] * accRewardsPerLP) / 1e18;
-        rewardToken.transfer(user, userClaimed[user].sub(pastUserClaimed));
+        uint256 amount = userClaimed[user].sub(pastUserClaimed);
+
+        if (amount > 0) {
+            rewardToken.transfer(user, amount);
+        }
     }
 }
