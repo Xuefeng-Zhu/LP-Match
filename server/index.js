@@ -1,13 +1,17 @@
 require('dotenv').config();
 
 const express = require('express');
+var cors = require('cors');
 const { providers, Contract, Wallet, utils, BigNumber } = require('ethers');
-const { abi: IUniswapV2PairABI } = require('./IUniswapV2Pair.json');
 const { toUtf8Bytes } = require('@ethersproject/strings');
 const { hashMessage } = require('@ethersproject/hash');
 
+const { abi: IUniswapV2PairABI } = require('./IUniswapV2Pair.json');
+
 const app = express();
-const port = 3000;
+app.use(cors());
+
+const port = 8000;
 
 const SECOND = 1000;
 
