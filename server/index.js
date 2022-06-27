@@ -1,8 +1,10 @@
 require('dotenv').config();
 
 const express = require('express');
-const { providers, Contract, Wallet } = require('ethers');
+const { providers, Contract, Wallet, utils, BigNumber } = require('ethers');
 const { abi: IUniswapV2PairABI } = require('./IUniswapV2Pair.json');
+const { toUtf8Bytes } = require('@ethersproject/strings');
+const { hashMessage } = require('@ethersproject/hash');
 
 const app = express();
 const port = 3000;
@@ -28,10 +30,11 @@ async function updatePrice() {
   if (priceCumulativeLast && reserves.blockTimestampLast > blockTimestampLast) {
     priceAverage = priceCumulative
       .sub(priceCumulativeLast)
-      .div(reserves.blockTimestampLast - blockTimestampLast)
-      .div(ethers.BigNumber.from(2).pow(112));
+      .div(reserves.blockTimestampLast - blockTimestampLast);
   } else {
-    priceAverage = reserves.reserve0.div(reserves.reserve1);
+    priceAverage = reserves.reserve0
+      .div(reserves.reserve1)
+      .mul(BigNumber.from(2).pow(112));
   }
 
   console.log('priceAverage', priceAverage.toString());
@@ -41,15 +44,24 @@ async function updatePrice() {
 }
 
 app.get('/currentPrice', async (req, res) => {
-  const sig = await wallet.signMessage(priceAverage);
+  const message = utils.keccak256(
+    utils.defaultAbiCoder.encode(
+      ['uint256', 'uint256'],
+      [priceAverage, blockTimestampLast]
+    )
+  );
+  const sig = await wallet.signMessage(
+    Buffer.from(message.substring(2), 'hex')
+  );
 
   res.json({
     sig,
+    blockTimestampLast: blockTimestampLast.toString(),
     priceAverage: priceAverage.toString(),
   });
 });
 
-app.listen(port, () => {
-  setInterval(updatePrice, 60 * SECOND);
+app.listen(port, async () => {
+  setInterval(updatePrice, 5 * SECOND);
   console.log(`App listening on port ${port}`);
 });

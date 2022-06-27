@@ -27,6 +27,13 @@ const func = async (hre) => {
     LPMatch.address,
     '10000000000000000000000'
   );
+
+  await execute(
+    'LPMatch',
+    { from: deployer, log: true },
+    'setPriceServer',
+    deployer
+  );
 };
 
 func.tags = ['LPMatch'];

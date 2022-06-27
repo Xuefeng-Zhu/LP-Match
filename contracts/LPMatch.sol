@@ -92,22 +92,23 @@ contract LPMatch is AccessControl {
     function addLiquidity(
         uint256 amount,
         uint256 price,
+        uint256 blockTimestampLast,
         bytes calldata sig
     ) external onlyWhitelist {
         require(
             IERC20(WETH).transferFrom(msg.sender, address(this), amount),
             "transfer failed"
         );
-        _addLiquidity(amount, price, sig);
+        _addLiquidity(amount, price, blockTimestampLast, sig);
     }
 
-    function addLiquidityETH(uint256 price, bytes calldata sig)
-        external
-        payable
-        onlyWhitelist
-    {
+    function addLiquidityETH(
+        uint256 price,
+        uint256 blockTimestampLast,
+        bytes calldata sig
+    ) external payable onlyWhitelist {
         IWETH(WETH).deposit{value: msg.value}();
-        _addLiquidity(msg.value, price, sig);
+        _addLiquidity(msg.value, price, blockTimestampLast, sig);
     }
 
     function withdrawLP(uint256 amount) external {
@@ -150,13 +151,21 @@ contract LPMatch is AccessControl {
     function _addLiquidity(
         uint256 amount,
         uint256 price,
+        uint256 blockTimestampLast,
         bytes memory sig
     ) internal {
-        bytes32 priceHash = keccak256(abi.encode(price))
+        (, , uint256 reservesBlockTimestamp) = IUniswapV2Pair(pair)
+            .getReserves();
+        require(
+            reservesBlockTimestamp == blockTimestampLast,
+            "Invalid blockTimestampLast"
+        );
+
+        bytes32 priceHash = keccak256(abi.encode(price, blockTimestampLast))
             .toEthSignedMessageHash();
         require(priceHash.recover(sig) == priceServer, "Invalid price");
 
-        uint256 tokenAmount = price.mul(amount);
+        uint256 tokenAmount = price.mul(amount) >> 112;
         (, , uint256 liquidity) = router.addLiquidity(
             token,
             WETH,
