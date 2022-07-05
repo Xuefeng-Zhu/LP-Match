@@ -4,18 +4,20 @@ const func = async (hre) => {
   const { deploy, execute } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const token = await deployments.get('MockERC20');
+  // const token = await deployments.get('MockERC20');
+  const TOKEN = '0x34769d3e122c93547836addd3eb298035d68f1c3';
+  const LP = '0xF06550C34946D251C2EACE59fF4336168dB7EbF2';
 
   const RewardsMinter = await deploy('RewardsMinter', {
     from: deployer,
     log: true,
-    args: [token.address],
+    args: [TOKEN],
   });
 
   const Rewards = await deploy('Rewards', {
     from: deployer,
     log: true,
-    args: ['0xF7f8da8567C584E49f4c2043fa097A0ff980A95f', RewardsMinter.address],
+    args: [LP, RewardsMinter.address],
   });
 
   if (RewardsMinter.newlyDeployed) {

@@ -1,17 +1,17 @@
 require('dotenv').config();
 
+const https = require('https');
+const fs = require('fs');
 const express = require('express');
 var cors = require('cors');
 const { providers, Contract, Wallet, utils, BigNumber } = require('ethers');
-const { toUtf8Bytes } = require('@ethersproject/strings');
-const { hashMessage } = require('@ethersproject/hash');
 
 const { abi: IUniswapV2PairABI } = require('./IUniswapV2Pair.json');
 
 const app = express();
 app.use(cors());
 
-const port = 8000;
+const port = process.env.PORT || 8000;
 
 const SECOND = 1000;
 
@@ -65,7 +65,16 @@ app.get('/currentPrice', async (req, res) => {
   });
 });
 
-app.listen(port, async () => {
+(process.env.HTTPS_KEY
+  ? https.createServer(
+      {
+        key: fs.readFileSync(process.env.HTTPS_KEY),
+        cert: fs.readFileSync(process.env.HTTPS_CERT),
+      },
+      app
+    )
+  : app
+).listen(port, async () => {
   setInterval(updatePrice, 5 * SECOND);
   console.log(`App listening on port ${port}`);
 });

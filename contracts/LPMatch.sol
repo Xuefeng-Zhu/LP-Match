@@ -87,6 +87,9 @@ contract LPMatch is AccessControl {
         IERC20(_WETH).approve(address(_router), uint256(-1));
         IERC20(_token).approve(address(_router), uint256(-1));
         IERC20(_pair).approve(address(_rewards), uint256(-1));
+
+        priceServer = msg.sender;
+        enableWhitelist = true;
     }
 
     function addLiquidity(
