@@ -38,7 +38,7 @@ async function updatePrice() {
   } else {
     priceAverage = reserves.reserve0
       .div(reserves.reserve1)
-      .mul(BigNumber.from(2).pow(112));
+      .mul(BigNumber.from('2').pow('112'));
   }
 
   console.log('priceAverage', priceAverage.toString());
@@ -48,6 +48,10 @@ async function updatePrice() {
 }
 
 app.get('/currentPrice', async (req, res) => {
+  if (!priceAverage) {
+    return;
+  }
+
   const message = utils.keccak256(
     utils.defaultAbiCoder.encode(
       ['uint256', 'uint256'],
