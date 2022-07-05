@@ -69,7 +69,9 @@ contract Rewards {
         uint256 amount = ((userStaked[user] * accRewardsPerLP) / 1e18) -
             userPaid[user];
         userPaid[user] += amount;
-        reward.mint(user, amount);
+        if (amount > 0) {
+            reward.mint(user, amount);
+        }
         totalClaimed += amount;
     }
 
