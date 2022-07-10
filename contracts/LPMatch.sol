@@ -41,7 +41,7 @@ contract LPMatch is AccessControl {
     address public priceServer;
 
     mapping(address => uint256) public userLP;
-    mapping(address => uint256) public userClaimed;
+    mapping(address => uint256) public userClaimedPerLP;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "not admin");
@@ -89,7 +89,7 @@ contract LPMatch is AccessControl {
         IERC20(_pair).approve(address(_rewards), uint256(-1));
 
         priceServer = msg.sender;
-        enableWhitelist = true;
+        // enableWhitelist = true;
     }
 
     function addLiquidity(
@@ -144,7 +144,8 @@ contract LPMatch is AccessControl {
     }
 
     function claimable(address user) external view returns (uint256) {
-        return (userLP[user] * accRewardsPerLP) / 1e18 - userClaimed[user];
+        return
+            (userLP[user] * accRewardsPerLP.sub(userClaimedPerLP[user])) / 1e18;
     }
 
     function claim() external {
@@ -208,9 +209,9 @@ contract LPMatch is AccessControl {
                 protocolLP
         );
 
-        uint256 pastUserClaimed = userClaimed[user];
-        userClaimed[user] = (userLP[user] * accRewardsPerLP) / 1e18;
-        uint256 amount = userClaimed[user].sub(pastUserClaimed);
+        uint256 amount = (userLP[user] *
+            accRewardsPerLP.sub(userClaimedPerLP[user])) / 1e18;
+        userClaimedPerLP[user] = accRewardsPerLP;
 
         if (amount > 0) {
             rewardToken.transfer(user, amount);
