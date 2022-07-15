@@ -19,6 +19,8 @@ interface IRewards {
     function claim() external;
 
     function reward() external returns (IERC20);
+
+    function pending(address user) external view returns (uint256);
 }
 
 contract LPMatch is AccessControl {
@@ -89,7 +91,7 @@ contract LPMatch is AccessControl {
         IERC20(_pair).approve(address(_rewards), uint256(-1));
 
         priceServer = msg.sender;
-        // enableWhitelist = true;
+        enableWhitelist = true;
     }
 
     function addLiquidity(
@@ -144,8 +146,12 @@ contract LPMatch is AccessControl {
     }
 
     function claimable(address user) external view returns (uint256) {
+        uint256 newAccRewardsPerLP = accRewardsPerLP.add(
+            (rewards.pending(address(this)) * 1e18) / protocolLP
+        );
         return
-            (userLP[user] * accRewardsPerLP.sub(userClaimedPerLP[user])) / 1e18;
+            (userLP[user] * newAccRewardsPerLP.sub(userClaimedPerLP[user])) /
+            1e18;
     }
 
     function claim() external {

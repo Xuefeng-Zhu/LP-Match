@@ -9,12 +9,7 @@ const func = async (hre) => {
   let TOKEN = '0x34769d3e122c93547836addd3eb298035d68f1c3';
 
   if (chainId != '1') {
-    const token = await deploy('MockERC20', {
-      from: deployer,
-      args: ['Mock Coin', 'MOCK'],
-      log: true,
-    });
-
+    const token = await deployments.get('MockERC20');
     TOKEN = token.address;
   }
 
@@ -35,12 +30,12 @@ const func = async (hre) => {
       '10000000000000000000000'
     );
 
-    await execute(
-      'LPMatch',
-      { from: deployer, log: true },
-      'setPriceServer',
-      '0x83557abedb8dae954e61c26153d9b3c323e61032'
-    );
+    // await execute(
+    //   'LPMatch',
+    //   { from: deployer, log: true },
+    //   'setPriceServer',
+    //   '0x83557abedb8dae954e61c26153d9b3c323e61032'
+    // );
 
     await execute(
       'LPMatch',
