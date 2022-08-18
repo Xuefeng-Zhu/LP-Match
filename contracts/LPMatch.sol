@@ -120,8 +120,9 @@ contract LPMatch is AccessControl {
         require(userLP[msg.sender] >= amount, "not enough balance");
 
         _claim(msg.sender);
-        rewards.withdraw(amount);
+        rewards.withdraw(amount.mul(2));
         userLP[msg.sender] = userLP[msg.sender].sub(amount);
+        protocolLP = protocolLP.sub(amount);
         require(IERC20(pair).transfer(msg.sender, amount));
     }
 
@@ -129,11 +130,6 @@ contract LPMatch is AccessControl {
         external
         onlyAdmin
     {
-        if (tokenToWithdraw == pair) {
-            require(protocolLP >= amount, "not enough balance");
-            protocolLP = protocolLP.sub(amount);
-        }
-
         require(IERC20(tokenToWithdraw).transfer(msg.sender, amount));
     }
 
