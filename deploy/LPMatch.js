@@ -30,12 +30,12 @@ const func = async (hre) => {
       '10000000000000000000000'
     );
 
-    // await execute(
-    //   'LPMatch',
-    //   { from: deployer, log: true },
-    //   'setPriceServer',
-    //   '0x83557abedb8dae954e61c26153d9b3c323e61032'
-    // );
+    await execute(
+      'LPMatch',
+      { from: deployer, log: true },
+      'setPriceServer',
+      '0x83557abedb8dae954e61c26153d9b3c323e61032'
+    );
 
     await execute(
       'LPMatch',

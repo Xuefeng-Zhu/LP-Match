@@ -35,6 +35,11 @@ module.exports = {
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },
+    goerli: {
+      url: `https://goerli.infura.io/v3/${process.env.INFURA_TOKEN}` || '',
+      accounts:
+        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    },
     mumbai: {
       url: 'https://matic-mumbai.chainstacklabs.com',
       accounts:
